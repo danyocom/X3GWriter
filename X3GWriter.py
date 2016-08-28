@@ -4,9 +4,14 @@
 from UM.Mesh.MeshWriter import MeshWriter
 from UM.Logger import Logger
 from UM.Application import Application
+from UM.Preferences import Preferences
+from sys import platform
+
 import io
 import subprocess
 import os
+import pprint
+#import UM.Settings.ContainerRegistry
 
 class X3GWriter(MeshWriter):
     def __init__(self):
@@ -14,6 +19,29 @@ class X3GWriter(MeshWriter):
         self._gcode = None
 
     def write(self, stream, node, mode = MeshWriter.OutputMode.TextMode):
+
+
+        #global_container_stack = Application.getInstance().getGlobalContainerStack()
+
+        # Get total material used (in mm^3)
+        #print_information = Application.getInstance().getPrintInformation()
+        #mdia = Application.getInstance().getGlobalContainerStack().getProperty("machine_width", "value" )
+        #bob = Preferences.getInstance().getValue("machines/active_instance")
+        #Logger.log("d", "PPRINT OUTPUT: %s",str(bob))
+        #containers = UM.Settings.ContainerRegistry.getInstance().findContainerStacks(id = bob)
+        #if containers:
+        #    globalContStack = containers[0]
+        #    jim = globalContStack.getProperty("material_diameter", "value")
+        #    Logger.log("d", "Diameter: %s",str(jim))
+
+        #material_radius = 0.5 * global_container_stack.getProperty("material_diameter", "value")
+
+
+        #material_diameter = Application.getInstance().getGlobalContainerStack().getProperty("material_diameter", "value")
+
+        settings = Application.getInstance().getMachineManager().getWorkingProfile()
+        material_diameter = settings.getSettingValue("material_diameter")
+        Logger.log("d", "FILAMENT DIAMETER: %s",str(material_diameter))
         #Get the g-code.
         scene = Application.getInstance().getController().getScene()
         gcode_list = getattr(scene, "gcode_list")
@@ -37,22 +65,35 @@ class X3GWriter(MeshWriter):
             with open(temp_file, "w", -1, "utf-8") as f:
                 for gcode in gcode_list:
                     f.write(gcode)
+       
         except:
             Logger.log("e", "Error writing temporary g-code file %s", temp_file)
             _removeTemporary(temp_file)
             return False
 
+
+        gpxBinary = ""
+        if platform == "linux" or platform == "linux2":
+            gpxBinary = "gpxLinux";
+        elif platform == "darwin":
+            gpxBinary = "gpx";
+        elif platform == "win32":
+            gpxBinary = "cura_x3g.exe";
+
+
         #Call the converter application to convert it to X3G.
         Logger.log("d", "App path: %s", os.getcwd())
         Logger.log("d", "File name: %s", file_name)
         binary_path = os.path.dirname(os.path.realpath(__file__))
-        binary_filename = binary_path + r"\cura_x3g.exe"
-        command = [binary_filename, "-p", "-m", "r1d", "-c", binary_path + r"\cfg.ini", temp_file, file_name]
+        binary_filename = os.path.join(binary_path,gpxBinary);
+        config_path = os.path.join(binary_path,"cfg.ini")
+
+        command = [binary_filename, "-p", "-v", "-m", "r1d", "-f", str(material_diameter), "-c", config_path, temp_file, file_name]
         safes = [os.path.expandvars(p) for p in command]
         Logger.log("d", "Command: %s", str(command))
         stream.close() #Close the file so that the binary can write to it.
         try:
-            process = subprocess.Popen(safes, shell=True)
+            process = subprocess.Popen(safes, shell=False)
             process.wait()
             output = process.communicate(b'y')
             Logger.log("d", str(output))
